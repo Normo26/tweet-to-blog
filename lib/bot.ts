@@ -270,8 +270,9 @@ export async function processAutoMode(savedTweet: any, originalParsedTweet: Pars
       
       const autoModeMinChars = parseInt(await settings.get('autoModeMinChars') || '100');
       const autoModeRequireMedia = await settings.getBoolean('autoModeRequireMedia', true);
+      const autoModeKeywords = await settings.get('autoModeKeywords') || '';
     
-      console.log(`[Auto Mode] Settings: minChars=${autoModeMinChars}, requireMedia=${autoModeRequireMedia}`);
+      console.log(`[Auto Mode] Settings: minChars=${autoModeMinChars}, requireMedia=${autoModeRequireMedia}, keywords=${autoModeKeywords}`);
       
       // Check media from both the parsed tweet and saved tweet
       const hasMediaFromTweet = originalParsedTweet?.media && originalParsedTweet.media.length > 0;
@@ -296,6 +297,16 @@ export async function processAutoMode(savedTweet: any, originalParsedTweet: Pars
       const meetsCharCount = tweetTextLength >= autoModeMinChars;
       const meetsMediaRequirement = !autoModeRequireMedia || hasMedia;
       
+      // Check keywords if they are configured
+      let meetsKeywordRequirement = true;
+      if (autoModeKeywords && autoModeKeywords.trim()) {
+        const keywords = autoModeKeywords.split(',').map(k => k.trim().toLowerCase()).filter(k => k.length > 0);
+        if (keywords.length > 0) {
+          const tweetTextLower = tweetText.toLowerCase();
+          meetsKeywordRequirement = keywords.some(keyword => tweetTextLower.includes(keyword));
+        }
+      }
+      
       console.log(`[Auto Mode] Tweet ${savedTweet.id} check:`);
       console.log(`  - Text: "${tweetText.substring(0, 50)}..."`);
       console.log(`  - Text length: ${tweetTextLength} (required: ${autoModeMinChars})`);
@@ -303,8 +314,9 @@ export async function processAutoMode(savedTweet: any, originalParsedTweet: Pars
       console.log(`  - Has media (from saved): ${hasMediaFromSaved}`);
       console.log(`  - Meets char count: ${meetsCharCount}`);
       console.log(`  - Meets media requirement: ${meetsMediaRequirement} (requireMedia=${autoModeRequireMedia})`);
+      console.log(`  - Meets keyword requirement: ${meetsKeywordRequirement} (keywords: ${autoModeKeywords || 'none'})`);
       
-      if (meetsCharCount && meetsMediaRequirement) {
+      if (meetsCharCount && meetsMediaRequirement && meetsKeywordRequirement) {
         try {
           console.log(`[Auto Mode] ✅ Generating article for tweet ${savedTweet.id} (${tweetTextLength} chars, has media: ${hasMedia})`);
           const mediaUrls = savedTweet.media_urls || (originalParsedTweet?.media ? JSON.stringify(originalParsedTweet.media.map(m => m.mediaUrl)) : '');
@@ -355,7 +367,11 @@ export async function processAutoMode(savedTweet: any, originalParsedTweet: Pars
           // Don't throw - continue processing other tweets
         }
       } else {
-        console.log(`[Auto Mode] ⏭️ Skipping tweet ${savedTweet.id} - doesn't meet criteria (chars: ${meetsCharCount}, media: ${meetsMediaRequirement})`);
+        const reasons = [];
+        if (!meetsCharCount) reasons.push('char count');
+        if (!meetsMediaRequirement) reasons.push('media');
+        if (!meetsKeywordRequirement) reasons.push('keywords');
+        console.log(`[Auto Mode] ⏭️ Skipping tweet ${savedTweet.id} - doesn't meet criteria (${reasons.join(', ')})`);
       }
     } else {
       console.log(`[Auto Mode] ⏭️ Auto mode disabled, skipping article generation for tweet ${savedTweet.id}`);

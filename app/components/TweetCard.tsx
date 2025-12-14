@@ -54,7 +54,10 @@ export default function TweetCard({
   const [isIgnoring, setIsIgnoring] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isPublishing, setIsPublishing] = useState<{ english?: boolean; french?: boolean }>({});
-  const [publishStatus, setPublishStatus] = useState<'draft' | 'publish'>('draft');
+  // Separate publish status for each language
+  // Default to 'publish' for better UX - users can change to 'draft' if needed
+  const [publishStatusEnglish, setPublishStatusEnglish] = useState<'draft' | 'publish'>('publish');
+  const [publishStatusFrench, setPublishStatusFrench] = useState<'draft' | 'publish'>('publish');
   const [isExpanded, setIsExpanded] = useState(false);
   const [lightboxImage, setLightboxImage] = useState<{ images: string[]; index: number } | null>(null);
 
@@ -118,11 +121,17 @@ export default function TweetCard({
     }
   }, [tweet.article_generated, isGenerating]);
 
+  // Separate publish status for each language
+  // Default to 'publish' for better UX - users can change to 'draft' if needed
+  // Each language has its own dropdown for independent control
+
   const handlePublish = async (language: 'english' | 'french') => {
     if (!onPublish) return;
     setIsPublishing({ ...isPublishing, [language]: true });
     try {
-      const response = await onPublish(tweet.id, language, publishStatus);
+      // Use the appropriate status for the language being published
+      const status = language === 'english' ? publishStatusEnglish : publishStatusFrench;
+      const response = await onPublish(tweet.id, language, status);
       if (response && typeof response === 'object' && response !== null && 'link' in response && response.link) {
         toast.showSuccess(`Article published successfully!`, 6000);
         // Open link in new tab after a short delay
@@ -380,60 +389,78 @@ export default function TweetCard({
             )}
 
             {tweet.article_generated === 1 && onPublish && (
-              <div className="flex items-center gap-2">
-                <select
-                  value={publishStatus}
-                  onChange={(e) => setPublishStatus(e.target.value as 'draft' | 'publish')}
-                  className="text-sm border-gray-300 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500 py-1.5 pl-3 pr-8"
-                  title="Select publishing status"
-                >
-                  <option value="draft">Draft</option>
-                  <option value="publish">Live</option>
-                </select>
-                <button
-                  onClick={() => handlePublish('english')}
-                  disabled={isPublishing.english || tweet.published_english === 1}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${tweet.published_english === 1
-                    ? 'bg-green-50 text-green-700 border border-green-200'
-                    : 'bg-purple-600 text-white hover:bg-purple-700'
-                    } disabled:opacity-50 disabled:cursor-not-allowed`}
-                  title={
-                    tweet.published_english === 1
-                      ? 'Article published to English WordPress'
-                      : isPublishing.english
-                        ? 'Publishing to English WordPress...'
-                        : 'Publish article to English WordPress'
-                  }
-                >
-                  <Globe className="h-4 w-4" />
-                  {isPublishing.english
-                    ? 'Publishing...'
-                    : tweet.published_english === 1
-                      ? 'Published (EN)'
-                      : 'Publish (EN)'}
-                </button>
-                <button
-                  onClick={() => handlePublish('french')}
-                  disabled={isPublishing.french || tweet.published_french === 1}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${tweet.published_french === 1
-                    ? 'bg-green-50 text-green-700 border border-green-200'
-                    : 'bg-purple-600 text-white hover:bg-purple-700'
-                    } disabled:opacity-50 disabled:cursor-not-allowed`}
-                  title={
-                    tweet.published_french === 1
-                      ? 'Article published to French WordPress'
-                      : isPublishing.french
-                        ? 'Publishing to French WordPress...'
-                        : 'Publish article to French WordPress'
-                  }
-                >
-                  <Globe2 className="h-4 w-4" />
-                  {isPublishing.french
-                    ? 'Publishing...'
-                    : tweet.published_french === 1
-                      ? 'Published (FR)'
-                      : 'Publish (FR)'}
-                </button>
+              <div className="flex items-center gap-2 flex-wrap">
+                {/* English Publishing Controls */}
+                <div className="flex items-center gap-2">
+                  <select
+                    value={publishStatusEnglish}
+                    onChange={(e) => setPublishStatusEnglish(e.target.value as 'draft' | 'publish')}
+                    className="text-sm border-gray-300 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500 py-1.5 pl-3 pr-8"
+                    title="Select publishing status for English"
+                    disabled={tweet.published_english === 1}
+                  >
+                    <option value="draft">Draft</option>
+                    <option value="publish">Live</option>
+                  </select>
+                  <button
+                    onClick={() => handlePublish('english')}
+                    disabled={isPublishing.english || tweet.published_english === 1}
+                    className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${tweet.published_english === 1
+                      ? 'bg-green-50 text-green-700 border border-green-200'
+                      : 'bg-purple-600 text-white hover:bg-purple-700'
+                      } disabled:opacity-50 disabled:cursor-not-allowed`}
+                    title={
+                      tweet.published_english === 1
+                        ? 'Article published to English WordPress'
+                        : isPublishing.english
+                          ? 'Publishing to English WordPress...'
+                          : 'Publish article to English WordPress'
+                    }
+                  >
+                    <Globe className="h-4 w-4" />
+                    {isPublishing.english
+                      ? 'Publishing...'
+                      : tweet.published_english === 1
+                        ? 'Published (EN)'
+                        : 'Publish (EN)'}
+                  </button>
+                </div>
+                
+                {/* French Publishing Controls */}
+                <div className="flex items-center gap-2">
+                  <select
+                    value={publishStatusFrench}
+                    onChange={(e) => setPublishStatusFrench(e.target.value as 'draft' | 'publish')}
+                    className="text-sm border-gray-300 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500 py-1.5 pl-3 pr-8"
+                    title="Select publishing status for French"
+                    disabled={tweet.published_french === 1}
+                  >
+                    <option value="draft">Draft</option>
+                    <option value="publish">Live</option>
+                  </select>
+                  <button
+                    onClick={() => handlePublish('french')}
+                    disabled={isPublishing.french || tweet.published_french === 1}
+                    className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${tweet.published_french === 1
+                      ? 'bg-green-50 text-green-700 border border-green-200'
+                      : 'bg-purple-600 text-white hover:bg-purple-700'
+                      } disabled:opacity-50 disabled:cursor-not-allowed`}
+                    title={
+                      tweet.published_french === 1
+                        ? 'Article published to French WordPress'
+                        : isPublishing.french
+                          ? 'Publishing to French WordPress...'
+                          : 'Publish article to French WordPress'
+                    }
+                  >
+                    <Globe2 className="h-4 w-4" />
+                    {isPublishing.french
+                      ? 'Publishing...'
+                      : tweet.published_french === 1
+                        ? 'Published (FR)'
+                        : 'Publish (FR)'}
+                  </button>
+                </div>
               </div>
             )}
 

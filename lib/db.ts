@@ -491,6 +491,11 @@ export const tweets = {
     const result = await queryWithRetry(() => pool.query(query, params));
     return parseInt(result.rows[0].count, 10);
   },
+
+  deleteAll: async (): Promise<number> => {
+    const result = await queryWithRetry(() => pool.query('DELETE FROM tweets'));
+    return result.rowCount ?? 0;
+  },
 };
 
 // Settings operations
@@ -529,6 +534,7 @@ async function initializeDefaultSettings() {
       autoMode: 'false',
       autoModeMinChars: '100',
       autoModeRequireMedia: 'true',
+      autoModeKeywords: '',
     };
 
     for (const [key, value] of Object.entries(defaultSettings)) {

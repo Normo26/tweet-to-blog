@@ -92,4 +92,3 @@ See `USAGE_GUIDE.md` for detailed examples of how to use the response data.
 - Tailwind CSS
 
 # tweeter-to-blog
-# tweet-to-blog

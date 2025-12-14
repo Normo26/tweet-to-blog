@@ -242,7 +242,7 @@ export default function ArticlesPage() {
                         const response = await fetch(`/api/tweets/${id}/publish`, {
                           method: 'POST',
                           headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({ language, status }),
+                          body: JSON.stringify({ language, published: true, status }),
                         });
 
                         if (!response.ok) {

@@ -14,6 +14,7 @@ export async function GET() {
       autoMode: await settings.getBoolean('autoMode', false),
       autoModeMinChars: parseInt(await settings.get('autoModeMinChars') || '100') || 100,
       autoModeRequireMedia: await settings.getBoolean('autoModeRequireMedia', true),
+      autoModeKeywords: await settings.get('autoModeKeywords'),
     };
     return NextResponse.json(allSettings);
   } catch (error: any) {
@@ -59,6 +60,9 @@ export async function POST(request: NextRequest) {
     }
     if (body.autoModeRequireMedia !== undefined) {
       await settings.setBoolean('autoModeRequireMedia', body.autoModeRequireMedia);
+    }
+    if (body.autoModeKeywords !== undefined) {
+      await settings.set('autoModeKeywords', body.autoModeKeywords || '');
     }
     
     return NextResponse.json({ success: true });

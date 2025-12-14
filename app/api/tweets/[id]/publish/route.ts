@@ -8,12 +8,12 @@ async function uploadImageToWordPress(
   wpUrl: string,
   wpUsername: string,
   wpPassword: string
-): Promise<number | null> {
+): Promise<{ mediaId: number; url: string } | null> {
   try {
-    const imgResponse = await fetch(imageUrl, { 
-      signal: AbortSignal.timeout(30000) 
+    const imgResponse = await fetch(imageUrl, {
+      signal: AbortSignal.timeout(30000)
     });
-    
+
     if (!imgResponse.ok) {
       console.error(`Failed to download image: ${imageUrl} - Status: ${imgResponse.status}`);
       return null;
@@ -21,12 +21,12 @@ async function uploadImageToWordPress(
 
     const urlPath = new URL(imageUrl).pathname;
     let filename = urlPath.split('/').pop()?.split('?')[0] || 'tweet_image.jpg';
-    
+
     if (!filename || !filename.includes('.')) {
       const contentType = imgResponse.headers.get('Content-Type') || 'image/jpeg';
-      const ext = contentType.includes('png') ? 'png' : 
-                  contentType.includes('gif') ? 'gif' : 
-                  contentType.includes('webp') ? 'webp' : 'jpg';
+      const ext = contentType.includes('png') ? 'png' :
+        contentType.includes('gif') ? 'gif' :
+          contentType.includes('webp') ? 'webp' : 'jpg';
       filename = `tweet_image_${Date.now()}.${ext}`;
     }
 
@@ -48,14 +48,14 @@ async function uploadImageToWordPress(
       body: formData,
       signal: AbortSignal.timeout(60000)
     });
-    
+
     if (uploadResponse.status === 201) {
       const mediaData = await uploadResponse.json();
       const uploadedUrl = mediaData.source_url || mediaData.guid?.rendered || mediaData.link;
       const mediaId = mediaData.id;
       if (uploadedUrl && mediaId) {
         console.log(`Successfully uploaded image to WordPress: ${uploadedUrl} (Media ID: ${mediaId})`);
-        return mediaId;
+        return { mediaId, url: uploadedUrl };
       } else {
         console.error(`Upload succeeded but missing data in response: ${JSON.stringify(mediaData)}`);
         return null;
@@ -77,7 +77,7 @@ export async function POST(
 ) {
   try {
     const id = parseInt(params.id);
-    const { language, published } = await request.json();
+    const { language, published, status } = await request.json();
 
     if (isNaN(id)) {
       return NextResponse.json(
@@ -117,8 +117,8 @@ export async function POST(
     }
 
     // Get article content
-    const articleContent = language === 'english' 
-      ? tweet.article_english 
+    const articleContent = language === 'english'
+      ? tweet.article_english
       : tweet.article_french;
 
     if (!articleContent) {
@@ -130,8 +130,8 @@ export async function POST(
 
     let articleData: { title: string; article?: string; content?: string };
     try {
-      articleData = typeof articleContent === 'string' 
-        ? JSON.parse(articleContent) 
+      articleData = typeof articleContent === 'string'
+        ? JSON.parse(articleContent)
         : articleContent;
     } catch {
       return NextResponse.json(
@@ -147,15 +147,19 @@ export async function POST(
       );
     }
 
-    // Get first media URL for featured image
-    let imageUrl: string | null = null;
+    // Get all media URLs
+    const mediaUrls: string[] = [];
     try {
       const media = tweet.media_urls ? JSON.parse(tweet.media_urls) : [];
       if (Array.isArray(media) && media.length > 0) {
-        const firstMedia = media[0];
-        imageUrl = typeof firstMedia === 'string' 
-          ? firstMedia 
-          : firstMedia.mediaUrl || firstMedia.url || null;
+        media.forEach((mediaItem: any) => {
+          const url = typeof mediaItem === 'string'
+            ? mediaItem
+            : mediaItem.mediaUrl || mediaItem.url || null;
+          if (url) {
+            mediaUrls.push(url);
+          }
+        });
       }
     } catch {
       // Ignore media parsing errors
@@ -175,22 +179,45 @@ export async function POST(
 
     const wpApiUrl = `${wpUrl.replace(/\/$/, '')}/wp-json/wp/v2/posts`;
 
+    // Upload all images to WordPress
+    const uploadedImages: Array<{ mediaId: number; url: string }> = [];
+    for (const imageUrl of mediaUrls) {
+      const uploadResult = await uploadImageToWordPress(imageUrl, wpUrl, wpUsername, wpPassword);
+      if (uploadResult) {
+        uploadedImages.push(uploadResult);
+      }
+    }
+
+    // Use first image as featured image
     let featuredMediaId: number | null = null;
-    if (imageUrl) {
-      featuredMediaId = await uploadImageToWordPress(imageUrl, wpUrl, wpUsername, wpPassword);
+    if (uploadedImages.length > 0) {
+      featuredMediaId = uploadedImages[0].mediaId;
     }
 
     // Convert markdown to HTML
     const articleHtml = marked(articleData.article || articleData.content || '');
-    
+
+    // Add additional images to the article content (skip the first one as it's the featured image)
+    let imagesHtml = '';
+    if (uploadedImages.length > 1) {
+      imagesHtml = '<div class="article-images" style="margin: 30px 0; display: flex; flex-direction: column; gap: 20px;">';
+      for (let i = 1; i < uploadedImages.length; i++) {
+        imagesHtml += `<figure style="margin: 0; text-align: center;">
+          <img src="${uploadedImages[i].url}" alt="Article image ${i}" style="max-width: 100%; height: auto; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);" />
+        </figure>`;
+      }
+      imagesHtml += '</div>';
+    }
+
     const fullContent = `${articleHtml}
+${imagesHtml}
 <hr>
 <p><em>Source: <a href="https://twitter.com/${tweet.username}/status/${tweet.tweet_id}" target="_blank">Original Tweet</a></em></p>`;
 
     const postData: any = {
       title: articleData.title,
       content: fullContent,
-      status: 'publish',
+      status: status || 'publish', // Use the provided status, default to 'publish' for backward compatibility
     };
 
     if (featuredMediaId) {
@@ -228,7 +255,7 @@ export async function POST(
 
     // Update database with publishing status
     const success = await tweets.updatePublished(id, language, true, publishData.link);
-    
+
     if (!success) {
       return NextResponse.json(
         { error: 'Failed to update tweet status' },
@@ -236,7 +263,7 @@ export async function POST(
       );
     }
 
-    return NextResponse.json({ 
+    return NextResponse.json({
       success: true,
       post_id: publishData.id,
       link: publishData.link,

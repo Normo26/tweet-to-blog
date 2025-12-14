@@ -325,12 +325,12 @@ export default function TweetsPage() {
     }
   };
 
-  const handlePublish = async (id: number, language: 'english' | 'french') => {
+  const handlePublish = async (id: number, language: 'english' | 'french', status: 'draft' | 'publish' = 'publish') => {
     try {
       const response = await fetch(`/api/tweets/${id}/publish`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ language, published: true }),
+        body: JSON.stringify({ language, published: true, status }),
       });
 
       if (!response.ok) {

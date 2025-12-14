@@ -12,7 +12,9 @@ import {
   User,
   Lock,
   Bot,
-  X
+  X,
+  Database,
+  AlertTriangle
 } from 'lucide-react';
 import { useToast } from '@/app/components/ToastProvider';
 import { CheckCircle, XCircle, Loader2 } from 'lucide-react';
@@ -28,6 +30,7 @@ interface Settings {
   autoMode: boolean;
   autoModeMinChars: number;
   autoModeRequireMedia: boolean;
+  autoModeKeywords: string | null;
 }
 
 interface Account {
@@ -62,6 +65,8 @@ export default function SettingsPage() {
     message?: string;
   }>({ type: null, status: null });
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [isDeletingTweets, setIsDeletingTweets] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   
   const { data: settings, isLoading: settingsLoading } = useQuery({
     queryKey: ['settings'],
@@ -80,6 +85,7 @@ export default function SettingsPage() {
     autoMode: false,
     autoModeMinChars: 100,
     autoModeRequireMedia: true,
+    autoModeKeywords: '',
   });
   const [accountForm, setAccountForm] = useState({ name: '', username: '', user_id: '' });
 
@@ -90,6 +96,7 @@ export default function SettingsPage() {
         autoMode: settings.autoMode ?? false,
         autoModeMinChars: settings.autoModeMinChars || 100,
         autoModeRequireMedia: settings.autoModeRequireMedia !== undefined ? settings.autoModeRequireMedia : true,
+        autoModeKeywords: settings.autoModeKeywords || '',
       });
     }
   }, [settings]);
@@ -247,6 +254,29 @@ export default function SettingsPage() {
       toast.showSuccess('Account updated successfully!');
     } catch (error: any) {
       toast.showError(error.message || 'Failed to update account');
+    }
+  };
+
+  const handleDeleteAllTweets = async () => {
+    setIsDeletingTweets(true);
+    try {
+      const response = await fetch('/api/tweets/delete-all', {
+        method: 'DELETE',
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || 'Failed to delete tweets');
+      }
+
+      const data = await response.json();
+      setShowDeleteConfirm(false);
+      await queryClient.invalidateQueries({ queryKey: ['tweets'] });
+      toast.showSuccess(data.message || `Successfully deleted ${data.deletedCount} tweet(s)!`);
+    } catch (error: any) {
+      toast.showError(error.message || 'Failed to delete tweets');
+    } finally {
+      setIsDeletingTweets(false);
     }
   };
 
@@ -566,11 +596,44 @@ export default function SettingsPage() {
               <p className="text-xs text-gray-500 mt-1">Minimum tweet length (in characters) to generate articles</p>
             </div>
 
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Required Keywords (Optional)
+              </label>
+              <input
+                type="text"
+                value={formData.autoModeKeywords || ''}
+                onChange={async (e) => {
+                  const newValue = e.target.value;
+                  setFormData({ ...formData, autoModeKeywords: newValue });
+                  // Auto-save after a short delay to avoid too many requests
+                  setTimeout(async () => {
+                    try {
+                      await fetch('/api/settings', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ autoModeKeywords: newValue }),
+                      });
+                      await queryClient.invalidateQueries({ queryKey: ['settings'] });
+                    } catch (error) {
+                      console.error('Error auto-saving keywords setting:', error);
+                    }
+                  }, 500);
+                }}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                placeholder="AI, technology, innovation (comma-separated)"
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                Comma-separated keywords. Tweets must contain at least one keyword to generate articles. Leave empty to disable keyword filtering.
+              </p>
+            </div>
+
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
               <p className="text-xs text-blue-800">
                 <strong>Auto Mode Criteria:</strong> Articles will be automatically generated for tweets that have{' '}
                 {formData.autoModeRequireMedia !== false ? 'media (images) and ' : ''}
-                at least {formData.autoModeMinChars || 100} characters.
+                at least {formData.autoModeMinChars || 100} characters
+                {formData.autoModeKeywords && formData.autoModeKeywords.trim() ? ` and contain at least one of these keywords: ${formData.autoModeKeywords}` : ''}.
               </p>
             </div>
           </div>
@@ -719,6 +782,93 @@ export default function SettingsPage() {
           )}
         </div>
       </div>
+
+      {/* Data Management */}
+      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+        <div className="flex items-center space-x-3 mb-4">
+          <Database className="h-5 w-5 text-gray-600" />
+          <h2 className="text-xl font-semibold text-gray-900">Data Management</h2>
+        </div>
+        <div className="space-y-4">
+          <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
+            <div className="flex items-start space-x-3">
+              <AlertTriangle className="h-5 w-5 text-red-600 flex-shrink-0 mt-0.5" />
+              <div className="flex-1">
+                <h3 className="font-medium text-red-900 mb-1">Danger Zone</h3>
+                <p className="text-sm text-red-700 mb-3">
+                  Permanently delete all tweets from the database. This action cannot be undone.
+                  All tweet data, including generated articles, will be permanently removed.
+                  <strong className="block mt-1 text-green-700">Note: Your Twitter/X accounts will remain intact.</strong>
+                </p>
+                <button
+                  onClick={() => setShowDeleteConfirm(true)}
+                  disabled={isDeletingTweets}
+                  className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2 transition-colors"
+                >
+                  <Trash2 className="h-4 w-4" />
+                  <span>Remove All Tweets</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Delete Confirmation Modal */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4">
+            <div className="p-6">
+              <div className="flex items-center space-x-3 mb-4">
+                <AlertTriangle className="h-6 w-6 text-red-600" />
+                <h3 className="text-lg font-semibold text-gray-900">Confirm Deletion</h3>
+              </div>
+              <p className="text-gray-700 mb-4">
+                Are you sure you want to delete <strong>all tweets</strong> from the database?
+                This action cannot be undone and will permanently remove:
+              </p>
+              <ul className="list-disc list-inside text-sm text-gray-600 mb-4 space-y-1">
+                <li>All tweet records</li>
+                <li>All generated articles</li>
+                <li>All publishing status and links</li>
+                <li>All associated metadata</li>
+              </ul>
+              <div className="p-3 bg-green-50 border border-green-200 rounded-lg mb-6">
+                <p className="text-sm text-green-800">
+                  <strong>✓ Your accounts will NOT be affected.</strong> Only tweet data will be deleted. 
+                  You can continue monitoring the same accounts after deletion.
+                </p>
+              </div>
+              <div className="flex justify-end space-x-3">
+                <button
+                  onClick={() => setShowDeleteConfirm(false)}
+                  disabled={isDeletingTweets}
+                  className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleDeleteAllTweets}
+                  disabled={isDeletingTweets}
+                  className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2"
+                >
+                  {isDeletingTweets ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      <span>Deleting...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Trash2 className="h-4 w-4" />
+                      <span>Delete All Tweets</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
