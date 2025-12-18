@@ -2,7 +2,7 @@ import { Pool, QueryResult } from 'pg';
 
 // Initialize PostgreSQL connection pool
 // Optimized for serverless environments (Vercel, etc.)
-const connectionString = process.env.DATABASE_URL || 'postgresql://neondb_owner:npg_APbdO1pNkz4Z@ep-proud-glade-adurvu64-pooler.c-2.us-east-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require';
+const connectionString = process.env.DATABASE_URL || 'postgresql://neondb_owner:npg_XmSx2NCoTn0y@ep-winter-queen-agmndjpx-pooler.c-2.eu-central-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require';
 
 // Check if we're in a serverless environment
 const isServerless = !!(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME || process.env.NEXT_RUNTIME === 'nodejs');
